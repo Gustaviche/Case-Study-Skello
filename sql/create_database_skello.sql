@@ -1,0 +1,174 @@
+CREATE DATABASE `skello-case`;
+
+USE `skello-case`;
+
+-- Table conversation
+CREATE TABLE conversations(
+	CONVERSATION_RATING TEXT,
+	CREATED_AT	TIMESTAMP,
+	ID	BIGINT PRIMARY KEY,
+	OPEN BOOLEAN,
+	PRIORITY VARCHAR(50),
+	`READ`BOOLEAN,
+	STATE VARCHAR(50),
+	TAGS TEXT,
+	TYPE VARCHAR(50),
+	UPDATED_AT	TIMESTAMP,
+	WAITING_SINCE TIMESTAMP,
+	_SDC_BATCHED_AT TIMESTAMP,
+	_SDC_EXTRACTED_AT TIMESTAMP,
+	_SDC_RECEIVED_AT TIMESTAMP,
+	_SDC_SEQUENCE	BIGINT,
+	_SDC_TABLE_VERSION	INT,
+	ASSIGNEE TEXT,
+	SNOOZED_UNTIL TIMESTAMP
+);
+
+-- Table conversation_parts
+CREATE TABLE conversation_parts (
+  ASSIGNED_TO TEXT,
+  ATTACHMENTS JSON,
+  AUTHOR TEXT,
+  CONVERSATION_CREATED_AT DATETIME(6),
+  CONVERSATION_ID BIGINT,
+  CONVERSATION_UPDATED_AT DATETIME(6),
+  CREATED_AT DATETIME(6),
+  ID BIGINT PRIMARY KEY,
+  NOTIFIED_AT DATETIME(6),
+  PART_GROUP VARCHAR(255),
+  TYPE VARCHAR(50),
+  UPDATED_AT DATETIME(6),
+  _SDC_BATCHED_AT DATETIME(6),
+  _SDC_EXTRACTED_AT DATETIME(6),
+  _SDC_RECEIVED_AT DATETIME(6),
+  _SDC_SEQUENCE BIGINT,
+  _SDC_TABLE_VERSION INT,
+  assigned_user_id VARCHAR(255),
+  author_id VARCHAR(255)
+);
+
+LOAD DATA LOCAL INFILE '/Users/algaumon/Documents/Case Study Skello/data/CONVERSATIONS.csv'
+INTO TABLE conversations
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;
+
+LOAD DATA LOCAL INFILE '/Users/algaumon/Documents/Case Study Skello/data/CONVERSATION_PARTS.csv'
+INTO TABLE conversation_parts
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;
+
+CREATE TABLE conversation_ratings (
+  CONVERSATION_ID BIGINT PRIMARY KEY,
+  RATING TINYINT,
+  REMARK TEXT,
+  TEAMMATE_ID BIGINT,
+  TEAMMATE_TYPE VARCHAR(50),
+  RATING_CREATED_AT DATETIME
+);
+
+INSERT INTO conversation_ratings (
+  CONVERSATION_ID, RATING, REMARK, TEAMMATE_ID, TEAMMATE_TYPE, RATING_CREATED_AT
+)
+SELECT
+  ID,
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT(CONVERSATION_RATING, '$.rating')), 'null'),
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT(CONVERSATION_RATING, '$.remark')), ''),
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT(CONVERSATION_RATING, '$.teammate.id')), ''),
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT(CONVERSATION_RATING, '$.teammate.type')), ''),
+  CAST(
+    REPLACE(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(CONVERSATION_RATING, '$.created_at')), 'T', ' '), 'Z', '')
+    AS DATETIME
+  )
+FROM conversations
+WHERE JSON_VALID(CONVERSATION_RATING);
+
+CREATE TABLE tags (
+  tag_id VARCHAR(50),
+  conversation_id BIGINT,
+  name VARCHAR(255),
+  type VARCHAR(50),
+  applied_at DATETIME,
+  applied_by_id VARCHAR(50),
+  applied_by_type VARCHAR(50),
+  PRIMARY KEY (tag_id, conversation_id)
+);
+
+INSERT IGNORE INTO tags (
+  tag_id, name, applied_at, applied_by_id, applied_by_type, conversation_id
+)
+SELECT DISTINCT
+  jt.id,
+  jt.name,
+  STR_TO_DATE(REPLACE(REPLACE(jt.applied_at, 'T', ' '), 'Z', ''), '%Y-%m-%d %H:%i:%s'),
+  jt.applied_by_id,
+  jt.applied_by_type,
+  c.ID
+FROM conversations c
+JOIN JSON_TABLE(
+  c.TAGS,
+  '$[*]' COLUMNS (
+    id VARCHAR(50) PATH '$.id',
+    name VARCHAR(100) PATH '$.name',
+    applied_at VARCHAR(30) PATH '$.applied_at',
+    applied_by_id VARCHAR(50) PATH '$.applied_by.id',
+    applied_by_type VARCHAR(50) PATH '$.applied_by.type'
+  )
+) AS jt
+WHERE c.TAGS IS NOT NULL AND c.TAGS != '';
+
+CREATE TABLE assigned_users (
+  id VARCHAR(255) PRIMARY KEY,
+  type VARCHAR(50)
+);
+
+INSERT INTO assigned_users (id, type)
+SELECT DISTINCT
+  JSON_UNQUOTE(JSON_EXTRACT(REPLACE(assigned_to, '''', '"'), '$.id')),
+  JSON_UNQUOTE(JSON_EXTRACT(REPLACE(assigned_to, '''', '"'), '$.type'))
+FROM conversation_parts
+WHERE assigned_to IS NOT NULL
+  AND assigned_to != ''
+  AND JSON_VALID(REPLACE(assigned_to, '''', '"'));
+
+CREATE TABLE author (
+  id VARCHAR(255) PRIMARY KEY,
+  type VARCHAR(50)
+);
+
+INSERT INTO author (id, type)
+SELECT DISTINCT
+  JSON_UNQUOTE(JSON_EXTRACT(AUTHOR, '$.id')),
+  JSON_UNQUOTE(JSON_EXTRACT(AUTHOR, '$.type'))
+FROM conversation_parts
+WHERE author IS NOT NULL
+  AND JSON_VALID(AUTHOR);
+
+UPDATE conversation_parts
+SET assigned_user_id = JSON_UNQUOTE(JSON_EXTRACT(REPLACE(ASSIGNED_TO, '''', '"'), '$.id'))
+WHERE ASSIGNED_TO IS NOT NULL
+  AND ASSIGNED_TO != ''
+  AND JSON_VALID(REPLACE(ASSIGNED_TO, '''', '"'));
+
+UPDATE conversation_parts
+SET author_id = JSON_UNQUOTE(JSON_EXTRACT(AUTHOR, '$.id'))
+WHERE AUTHOR IS NOT NULL
+  AND AUTHOR != ''
+  AND JSON_VALID(AUTHOR);
+
+ALTER TABLE conversation_ratings
+ADD CONSTRAINT fk_rating_conversation FOREIGN KEY (CONVERSATION_ID) REFERENCES conversations(ID);
+
+ALTER TABLE tags
+ADD CONSTRAINT fk_tag_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(ID);
+
+ALTER TABLE conversation_parts
+ADD CONSTRAINT fk_parts_conversation FOREIGN KEY (CONVERSATION_ID) REFERENCES conversations(ID),
+ADD CONSTRAINT fk_assigned_user FOREIGN KEY (assigned_user_id) REFERENCES assigned_users(id),
+ADD CONSTRAINT fk_author FOREIGN KEY (author_id) REFERENCES author(id);
+
+
+
