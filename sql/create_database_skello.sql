@@ -1,6 +1,6 @@
-CREATE DATABASE `skello-case`;
+CREATE DATABASE `skello_case`;
 
-USE `skello-case`;
+USE `skello_case`;
 
 -- Table conversation
 CREATE TABLE conversations(
@@ -71,9 +71,6 @@ CREATE TABLE conversation_ratings (
   RATING_CREATED_AT DATETIME
 );
 
-SELECT COUNT(*)
-FROM conversations
-WHERE WAITING_SINCE = '0000-00-00 00:00:00';
 
 INSERT INTO conversation_ratings (
   CONVERSATION_ID, RATING, REMARK, TEAMMATE_ID, TEAMMATE_TYPE, RATING_CREATED_AT

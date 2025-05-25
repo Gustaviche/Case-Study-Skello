@@ -1,22 +1,24 @@
-use `skello-case`;
+use `skello_case`;
 
 
-#table de travail
-select distinct 
-	   c.id as conversation_id
-	  ,c.created_at
-	  ,cp.notified_at
-	  ,c.updated_at
-	  ,c.assignee_id
-	  ,cr.rating
-	  ,cr.remark
-	  ,a.type
-	  ,a.id
-from conversations c
-inner join conversation_parts cp on cp.conversation_id = c.id 
-inner join author a on a.id = cp.author_id
-inner join conversation_ratings cr on cr.conversation_id = c.id
-where a.type != 'bot';
+SELECT DISTINCT 
+       c.id as conversation_id,
+       c.created_at,
+       cp.notified_at,
+       c.updated_at,
+       c.assignee_id,
+       cr.rating,
+       cr.remark,
+       a.type,
+       a.id
+FROM conversations c
+INNER JOIN conversation_parts cp ON cp.conversation_id = c.id 
+INNER JOIN author a ON a.id = cp.author_id
+INNER JOIN conversation_ratings cr ON cr.conversation_id = c.id
+WHERE a.type != 'bot'
+INTO OUTFILE '/Users/algaumon/Documents/Case Study Skello/kpi/conv.csv'
+FIELDS TERMINATED BY ',' ENCLOSED BY '"'
+LINES TERMINATED BY '\n';
 
 
 #temps de première réponse
@@ -91,3 +93,8 @@ JOIN author a ON a.id = cp.author_id
 WHERE a.type = 'admin'
 GROUP BY a.id, a.type
 ORDER BY nb_messages DESC;
+
+
+SHOW VARIABLES LIKE 'secure_file_priv';
+
+SELECT VERSION();
